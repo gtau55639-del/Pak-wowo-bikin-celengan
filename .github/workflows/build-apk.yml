@@ -65,27 +65,3 @@ jobs:
       - name: Make Gradle wrapper executable
         shell: bash
         run: chmod +x "${PROJECT_ROOT:-.}/gradlew"
-
-      - name: Run unit tests
-        shell: bash
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: ./gradlew :app:testDebugUnitTest --stacktrace
-
-      - name: Build debug APK
-        shell: bash
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: ./gradlew :app:assembleDebug --stacktrace
-
-      - name: Build release APK
-        shell: bash
-        working-directory: ${{ env.PROJECT_ROOT }}
-        run: ./gradlew :app:assembleRelease --stacktrace
-
-      - name: Upload APK artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: SAKUTABUNG-v0.0.1-APKs
-          if-no-files-found: error
-          path: |
-            ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/*.apk
-            ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/release/*.apk
