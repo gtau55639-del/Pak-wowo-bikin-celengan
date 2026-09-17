@@ -1,0 +1,91 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main", "master" ]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare Android project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # Supports either a normal project at repository root, or a project
+          # accidentally uploaded inside a single directory / ZIP archive.
+          if [[ -f "settings.gradle.kts" || -f "settings.gradle" ]]; then
+            echo "Gradle project found at repository root."
+            exit 0
+          fi
+
+          shopt -s nullglob
+          zips=( *.zip )
+          if (( ${#zips[@]} > 0 )); then
+            echo "ZIP project detected: ${zips[0]}"
+            mkdir -p .sakutabung-unpacked
+            unzip -q "${zips[0]}" -d .sakutabung-unpacked
+          fi
+
+          project_settings="$(find . -type f \( -name settings.gradle.kts -o -name settings.gradle \) \
+            -not -path './.git/*' \
+            -not -path './.sakutabung-unpacked/.git/*' | head -n 1 || true)"
+
+          if [[ -z "${project_settings}" ]]; then
+            echo "ERROR: No Gradle settings file was found. Upload the extracted SAKUTABUNG project files or keep the project ZIP in the repository."
+            exit 1
+          fi
+
+          project_root="$(dirname "${project_settings}")"
+          echo "Project root: ${project_root}"
+          echo "PROJECT_ROOT=${project_root}" >> "$GITHUB_ENV"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        shell: bash
+        run: chmod +x "${PROJECT_ROOT:-.}/gradlew"
+
+      - name: Run unit tests
+        shell: bash
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        shell: bash
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Build release APK
+        shell: bash
+        working-directory: ${{ env.PROJECT_ROOT }}
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Upload APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: SAKUTABUNG-v0.0.1-APKs
+          if-no-files-found: error
+          path: |
+            ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/debug/*.apk
+            ${{ env.PROJECT_ROOT }}/app/build/outputs/apk/release/*.apk
